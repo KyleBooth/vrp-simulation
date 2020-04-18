@@ -12,8 +12,12 @@ In progress.
 Running the simulator is very easy. Simple navigate to the directory and run the following in terminal:
 
 ```console
-python main.py `<cycles>` `<robots>` `<tasks>`
+python main.py `<cycles>` `<vehicles>` `<tasks>`
 ```
+
+* cycles: indicates the number of times a new VRP instance should be generated, solved, and simulated
+* vehicles: the number of agents that are routed
+* tasks: the number of customers visited across all vehiles
 
 A Python Turtle window should pop-up and simulate the solution to the VRP, resembling something like the following:
 
