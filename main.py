@@ -1,23 +1,22 @@
 ## Vehicle Routing Problem (VRP): Lightweight Simulator
-## Author: Kyle E. C. Booth
-## Date: March 3, 2016
+## Author: Kyle E. C. Booth, kbooth@mie.utoronto.ca
+
+## Python: v3.5.2
+## OR-Tools: v7.5
 
 ## Required packages
 import os
 import random
 import turtle
+import time
+import sys
 from turtle import Turtle
 import threading 
 import math
 from pprint import pprint
-from vrp import *
+from ortools.constraint_solver import routing_enums_pb2
+from ortools.constraint_solver import pywrapcp
 
-## Problem parameters (should make variable)
-globalParams = {"cycles" : 3}
-robotParams = {"robots": 3, "speed": 1, "capacity": 10, "depot": (0.00, 0.00), "shape": "triangle"}
-taskParams = {"tasks": 10, "speed": 0, "shape": "circle"}
-
-## Robot class definition
 class robot(Turtle):
      def __init__(self, speed, depot, capacity, shape):
             Turtle.__init__(self, shape)
@@ -27,13 +26,16 @@ class robot(Turtle):
             self.pencolor(random.random(), random.random(), random.random())
             self.pensize(3)
             
-# #Task class definition.
 class task():
     def __init__(self):
         self.x = (random.random()*2 - 1)*300
         self.y = (random.random()*2 - 1)*300
-
-# Build distance matrix.
+        
+def setDepot(taskList):
+    taskList[0].x = 0
+    taskList[0].y = 0
+    return taskList
+    
 def distances(taskList):
     distanceMatrix = []
     tmp = []
@@ -47,103 +49,157 @@ def distances(taskList):
         tmp = []
     return distanceMatrix
 
+def create_data_model(taskList, robots):
+    data = {}
+    data["distance_matrix"] = distances(taskList)
+    data["num_vehicles"] = robots
+    data["depot"] = 0
+    return data
+
+def encode_solution(data, manager, routing, assignment):
+    robot_paths = []
+    for vehicle_id in range(data['num_vehicles']):
+        robot_path = []
+        index = routing.Start(vehicle_id)
+        while not routing.IsEnd(index):
+            robot_path.append(manager.IndexToNode(index))
+            previous_index = index
+            index = assignment.Value(routing.NextVar(index))
+        robot_path.append(manager.IndexToNode(index))
+        robot_paths.append(robot_path)
+    return robot_paths
+
+def distance_callback(from_index, to_index):
+    from_node = manager.IndexToNode(from_index)
+    to_node = manager.IndexToNode(to_index)
+    return data["distance_matrix"][from_node][to_node]
+
+
+def simulate(globalParams, robotParams, taskParams, globalRobotPaths, globalTaskList):
+    
+    globalNodeTeam = []
+    for cycle in range(globalParams["cycles"]):
+        nodeTeam = [robot(taskParams["speed"], 0, 0, taskParams["shape"]) for node in range(taskParams["tasks"])]
+        globalNodeTeam.append(nodeTeam)
+    
+    robotTeam = [robot(robotParams["speed"], robotParams["depot"], 
+                      + robotParams["capacity"], robotParams["shape"]) for agent in range(robotParams["robots"])]
+
+    ## Define step length for synchronized movement.
+    stepLength = 15
+
+    for cycle in range(globalParams["cycles"]):
+        ## Disable screen updates.
+        turtle.tracer(0)
+        for node in range(len(globalNodeTeam[cycle])):
+            globalNodeTeam[cycle][node].penup()
+            globalNodeTeam[cycle][node].turtlesize(0.6)
+            globalNodeTeam[cycle][node].goto(globalTaskList[cycle][node].x, globalTaskList[cycle][node].y)
+            globalNodeTeam[cycle][node].write(node)
+
+        ## Re-enable screen updates.
+        turtle.tracer(1)
+        index = 0
+        ## Loop through node placements.
+        while index < len(max(globalRobotPaths[cycle], key=len)):
+            ## Determine angle to node and turn towards.
+            agentAng = []
+            for agent in range(len(robotTeam)):
+                if index < len(globalRobotPaths[cycle][agent]) and len(globalRobotPaths[cycle][agent]) != 2:
+                    ang = robotTeam[agent].towards(globalTaskList[cycle][globalRobotPaths[cycle][agent][index]].x, 
+                                                   + globalTaskList[cycle][globalRobotPaths[cycle][agent][index]].y)
+                    if (robotTeam[agent].heading()-ang > 0):
+                        robotTeam[agent].right(robotTeam[agent].heading()-ang)
+                    else:
+                        robotTeam[agent].left(ang-robotTeam[agent].heading())
+                else:
+                    agentAng.append(0)
+            ## Initialize step count (10 steps in this case) and distance count for each.
+            step = 0
+            agentDist = []
+            while step < stepLength:
+                ## Loop through agents
+                for agent in range(len(robotTeam)):
+                    if index < len(globalRobotPaths[cycle][agent]) and len(globalRobotPaths[cycle][agent]) != 2:
+                        if (step == 0):
+                            dist = robotTeam[agent].distance(globalTaskList[cycle][globalRobotPaths[cycle][agent][index]].x, 
+                                                             + globalTaskList[cycle][globalRobotPaths[cycle][agent][index]].y)
+                            agentDist.append(dist)
+                        elif (step == stepLength-1):
+                            globalNodeTeam[cycle][globalRobotPaths[cycle][agent][index]].fillcolor("red")
+                        ## Make dist/10 move towards goal.
+                        robotTeam[agent].forward(agentDist[agent]/stepLength)
+                    else:
+                        agentDist.append(0)
+                step += 1
+            ## Proceed to next node.
+            index += 1
+
+        for agent in range(len(robotTeam)):
+            robotTeam[agent].goto(robotParams["depot"])
+
+        for node in range(len(globalNodeTeam[cycle])):
+            globalNodeTeam[cycle][node].fillcolor("green")
+
+        if (cycle != globalParams["cycles"]-1):
+            time.sleep(2)
+            for agent in range(len(robotTeam)):
+                robotTeam[agent].clear()
+
+    turtle.done()
+
+    
+globalParams = {"cycles" : -1}
+robotParams = {"robots": -1, "speed": 1, "capacity": 10, "depot": (0.00, 0.00), "shape": "triangle"}
+taskParams = {"tasks": -1, "speed": 0, "shape": "circle"}
+
 if __name__ == '__main__':
 
-	globalTaskList = []
-	for cycle in range(globalParams["cycles"]):
-    		taskList = [task() for item in range(taskParams["tasks"])]
-    		globalTaskList.append(taskList)
+    args = []
+    for i, arg in enumerate(sys.argv):
+        args.append(arg)
+   
+    globalParams["cycles"] = int(args[1])
+    robotParams["robots"] = int(args[2])
+    taskParams["tasks"] = int(args[3])
 
-	globalTaskList[cycle][0].x = 0
-	globalTaskList[cycle][0].y = 0
+    globalRobotPaths = []
+    globalTaskList = []
+    for cycle in range(globalParams["cycles"]):
+    
+        taskList = [task() for item in range(taskParams["tasks"])]
+        taskList = setDepot(taskList)
 
-	## Build the distance matrix
-	distance = distances(globalTaskList[cycle])
+        data = create_data_model(taskList, robotParams["robots"])
 
-	maxDistances = []
-	for cycle in range(globalParams["cycles"]):
-		maxDistance = 0
-		i = 0
-		while i < taskParams["tasks"]-1:
-			maxDistance += distance[i][i+1]
-			i += 1
-		maxDistances.append(maxDistance)
-	
-	speed = robotParams["speed"] 
-	tasks = taskParams["tasks"]
-	robots = robotParams["robots"]
-	capacity = robotParams["capacity"]
-	max_time = [int(item/2.5) for item in maxDistances] 
+        manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']), data['num_vehicles'], data['depot'])
 
-	Customer = namedtuple("Customer", ['index', 'x', 'y'])
+        routing = pywrapcp.RoutingModel(manager)
 
-	customers = []
-	for cycle in range(globalParams["cycles"]):
-		customers.append([])
+        transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+        routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
-	globalRobotPaths = []
-	for cycle in range(globalParams["cycles"]):
+        dimension_name = 'Distance'
+        routing.AddDimension(
+            transit_callback_index,
+            0,  # no slack
+            3000,  # vehicle maximum travel distance
+            True,  # start cumul to zero
+            dimension_name)
+        distance_dimension = routing.GetDimensionOrDie(dimension_name)
+        distance_dimension.SetGlobalSpanCostCoefficient(100)
 
-		print (max_time[cycle])
-		print ("customer_count", tasks)
-		print ("vehicle_count", robots)
+        search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+        search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC)
 
-		#Generate randomly distributed customers
-		for i in range(tasks):
-			customer = Customer(i, globalTaskList[cycle][i].x, globalTaskList[cycle][i].y)
-			customers[cycle].append(customer)
-		    
-		routing = pywrapcp.RoutingModel(tasks, robots, 0)
+        assignment = routing.SolveWithParameters(search_parameters) 
 
-		search_parameters = pywrapcp.RoutingModel.DefaultSearchParameters()
-    		#search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
+        if assignment:
+            robot_paths = encode_solution(data, manager, routing, assignment)
 
-		routing.SetCost(length)
-
-		routing.AddDimension(time_plus_service_time, max_time[cycle], max_time[cycle], True, "Time")
-		time_dimension = routing.GetDimensionOrDie("Time")
-
-		for i in range(1, routing.nodes()):
-			routing.AddToAssignment(time_dimension.TransitVar(i))
-			routing.AddToAssignment(time_dimension.SlackVar(i))
-
-		assignment = routing.SolveWithParameters(search_parameters)
-
-		# Inspect solution.
-		print ("routing.vehicles:", routing.vehicles())
-		routes = []
-		routeSolution = []
-		for i in range(0,routing.vehicles()):
-			route_number = i
-			routes.append([])
-			node = routing.Start(route_number)
-			route = []
-			route.append(0)
-
-			if routing.IsVehicleUsed(assignment, i):
-				while True:
-					node = assignment.Value(routing.NextVar(node))
-				if not routing.IsEnd(node):
-					route.append(int(node))
-				else:
-					break
-
-			route.append(0)
-			routes[route_number].append(route)
-			routeSolution.append(route)
-		routes=routes[0]
-
-		## Optional print statement for more info.
-		#print collect_cumulative_dimension_at_node(routing, assignment, routes, dimension="Time")
-
-		globalRobotPaths.append(routeSolution)
-		    
-	print (globalRobotPaths)
-	
-	
-
-	
-
-	
+        globalRobotPaths.append(robot_paths)
+        globalTaskList.append(taskList)
+        
+    simulate(globalParams, robotParams, taskParams, globalRobotPaths, globalTaskList)
 
 
