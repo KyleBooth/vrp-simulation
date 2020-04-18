@@ -17,5 +17,4 @@ python main.py `<cycles>` `<robots>` `<tasks>`
 
 A Python Turtle window should pop-up and simulate the solution to the VRP, resembling something like the following:
 
-![VRP simulation demo](img/simulation-demo.png | width=400)
-<img src="img/simulation-demo.png" width="400">
+<img src="img/simulation-demo.png" width="600" align="center">
