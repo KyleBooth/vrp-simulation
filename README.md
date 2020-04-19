@@ -13,7 +13,7 @@ In progress.
 
 ### Running the simulator:
 
-Running the simulator is very easy. Simple navigate to the directory and run the following in terminal:
+Running the simulator is simple. Navigate to the directory and run the following in terminal:
 
 ```console
 python main.py `<cycles>` `<vehicles>` `<tasks>`
@@ -23,7 +23,7 @@ python main.py `<cycles>` `<vehicles>` `<tasks>`
 * vehicles: the number of agents that are routed
 * tasks: the number of customers visited across all vehicles
 
-_Note: Recommended using less than 5 vehicles and less than 30 tasks._
+_Note: Recommend using less than 5 vehicles and less than 30 tasks._
 
 A Python Turtle window should pop-up and simulate the solution to the VRP, resembling something like the following:
 
